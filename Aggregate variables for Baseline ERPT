@@ -1,0 +1,41 @@
+
+# ------------------------AGGREGATE DATA REGRESSION-----------------------------
+library(tidyverse)
+library(modelsummary)
+
+
+
+
+#--------------------Simple OLS, baseline model for First-stage ERPT------------
+
+Model_1 <- lm(log_CIF_ImportPrice_Diff_H1 ~ Log_Diff_Exchange, data = log_diff )
+summary(Model_1)
+
+stargazer(Model_1)
+
+
+
+
+#-------------Second-stage ERPT, including various horizons---------------------
+
+log_diff <- log_diff %>% 
+  mutate(Total_CPI_ATE_DIFF_H2 = lead(log_Total_CPI_ATE,2) - log_Total_CPI_ATE,
+         Total_CPI_ATE_DIFF_H4 = lead(log_Total_CPI_ATE,4) - log_Total_CPI_ATE,
+         Total_CPI_ATE_DIFF_H8 = lead(log_Total_CPI_ATE,8) - log_Total_CPI_ATE)
+
+
+
+
+Model_2.1 <- lm(log_Total_CPI_ATE_Diff_H1 ~ log_CIF_ImportPrice_Diff_H1 , data = log_diff)
+Model_2.2 <- lm(Total_CPI_ATE_DIFF_H2 ~ log_CIF_ImportPrice_Diff_H1 , data = log_diff)
+Model_2.3 <- lm(Total_CPI_ATE_DIFF_H4 ~ log_CIF_ImportPrice_Diff_H1 , data = log_diff)
+Model_2.4 <- lm(Total_CPI_ATE_DIFF_H8 ~ log_CIF_ImportPrice_Diff_H1 , data = log_diff)
+
+Second_Stage_ERPT <- list(
+  "Horizon 1" = Model_2.1,
+  "Horizon 2" = Model_2.2,
+  "Horizon 3" = Model_2.3,
+  "Horizon 4" = Model_2.4
+)
+
+modelsummary(Second_Stage_ERPT)
