@@ -1,0 +1,35 @@
+library(tidyverse)
+# Read in data Final_Timeseries_for_all_variables_in_log
+
+data_log <- Final_Timeseries_for_all_variables_in_log
+
+
+# -----------Data Transformation - Cumulative Differences-----------------------
+
+# Set the horizon dynamically (you can change this value to test other horizons)
+horizon <- 1  # change horizon to get different cumulative differences
+
+# Keep Exchange rate first-diff -> Assuming contempreanous shock
+log_diff <- data_log %>%
+  mutate(Log_Diff_Exchange = lead(log_Exchange_rate, 1) - log_Exchange_rate)
+
+
+# Specify the sector columns
+sector_cols <- c("log_Food_Non_Alcholic_Beverages", "log_Alcoholic_Beverages_Tobacco", 
+                 "log_Clothing_Footwear", "log_Furnishings_household_equipment", 
+                 "log_Transport", "log_Health", "log_CIF_ImportPrice", "log_Total_CPI_ATE")
+
+# Generate the difference variables for the chosen horizon for each sector
+for (sector in sector_cols) {
+  log_diff <- log_diff %>%
+    mutate(!!paste0(sector, "_Diff_H", horizon) := lead(!!sym(sector), horizon) - !!sym(sector))
+}
+
+# Remove old Variables
+log_diff <- log_diff %>% 
+  select(-log_Exchange_rate, -log_Food_Non_Alcholic_Beverages, 
+         -log_Alcoholic_Beverages_Tobacco, -log_Clothing_Footwear,
+         -log_Furnishings_household_equipment, -log_Transport,
+         -log_Health) # Remove old variables
+
+
