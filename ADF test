@@ -1,0 +1,80 @@
+# Load the required package
+library(urca)
+library(dplyr)
+
+#-----------------------------------------------------------------#
+# Testing for unit root using backward looking first-differences
+# ADF.test is meant for bakward looking differences. 
+# Using lag() to transform all variables
+
+#----------------------------------------------------------------#
+
+
+data_1 <- Final_Timeseries_for_all_variables_in_log
+
+log_Difference <- data_1 %>%
+  mutate(Exchange_rate = log_Exchange_rate - lag(log_Exchange_rate),
+         Food_Beverages = log_Food_Non_Alcholic_Beverages - lag(log_Food_Non_Alcholic_Beverages),
+         Alcohol_Tobacco = log_Alcoholic_Beverages_Tobacco - lag(log_Alcoholic_Beverages_Tobacco),
+         Clothing_Footwear = log_Clothing_Footwear - lag(log_Clothing_Footwear),
+         Furnishing_Household_equipment = log_Furnishings_household_equipment - lag(log_Furnishings_household_equipment),
+         Transport = log_Transport - lag(log_Transport),
+         Health = log_Health - lag(log_Health),
+         Import_Price = log_CIF_ImportPrice - lag(log_CIF_ImportPrice),
+         Total_CPI_ATE = log_Total_CPI_ATE - lag(log_Total_CPI_ATE)) %>% 
+  dplyr::select(-log_Exchange_rate, -log_Food_Non_Alcholic_Beverages, -log_Alcoholic_Beverages_Tobacco,
+         -log_Clothing_Footwear, -log_Furnishings_household_equipment,
+         -log_Transport, -log_Health, -log_CIF_ImportPrice, -log_Total_CPI_ATE)
+
+
+log_Difference <- log_Difference %>% 
+  na.omit() %>% 
+  dplyr::select(-Date)
+
+
+Exchange_rate <- log_Difference$Exchange_rate
+Food_Beverages <- log_Difference$Food_Beverages
+Alcohol_Tobacco <- log_Difference$Alcohol_Tobacco
+Clothing_Footwear <- log_Difference$Clothing_Footwear
+Furnishing_Household <- log_Difference$Furnishing_Household_equipment
+Transport <- log_Difference$Transport
+Health <- log_Difference$Health
+Import_Price <- log_Difference$Import_Price
+Total_CPI <- log_Difference$Total_CPI_ATE
+
+var_to_test <- c("Exchange_rate", "Food_Beverages", "Alcohol_Tobacco",
+                 "Clothing_Footwear", "Furnishing_Household",
+                 "Transport", "Health", "Import_Price", "Total_CPI")
+
+#-------------------------------- Create a data.frame with all tests----------------------------------
+
+# Initialize an empty list to store all results
+all_adf_results <- list()
+
+# Loop through each variable name in your list
+for (var in var_to_test) {
+  # Get the actual data vector
+  x <- get(var)
+  
+  # For each lag value (1 to 3)
+  for (lag_val in 1:3) {
+    # Run ADF test with specified lag
+    adf_test <- ur.df(x, type = "none", lags = lag_val)
+    
+    # Extract test statistic
+    test_stat <- adf_test@teststat[1]  # test stat for rho = 1
+    
+    # Store the result
+    all_adf_results[[paste(var, lag_val, sep = "_lag")]] <- data.frame(
+      Variable = var,
+      Lag = lag_val,
+      ADF_Statistic = test_stat
+    )
+  }
+}
+
+# Combine all results into a single data.frame
+adf_summary_all_lags <- do.call(rbind, all_adf_results)
+
+# Print summary
+print(adf_summary_all_lags)
