@@ -1,41 +1,151 @@
-
-# ------------------------AGGREGATE DATA REGRESSION-----------------------------
+library(modelsummary)
 library(tidyverse)
 library(modelsummary)
+#------------------------AGGREGATE DATA REGRESSION-----------------------------
+
+data_log <- Final_Timeseries_for_all_variables_in_log
+
+data_log <- Final_Timeseries_for_all_variables_in_log %>% 
+  select(Date, log_CIF_ImportPrice, log_Total_CPI_ATE)
+
+
 
 
 
 
 #--------------------Simple OLS, baseline model for First-stage ERPT------------
 
-Model_1 <- lm(log_CIF_ImportPrice_Diff_H1 ~ Log_Diff_Exchange, data = log_diff )
-summary(Model_1)
+log_diff <- data_log %>%
+  mutate(
+    log_Exchange_Diff = log_Exchange_rate - lag(log_Exchange_rate),  # FX shock at t
+    Import_Price_Diff_H1 = lead(log_CIF_ImportPrice, 1) - lag(log_CIF_ImportPrice),
+    Import_Price_Diff_H2 = lead(log_CIF_ImportPrice, 2) - lag(log_CIF_ImportPrice),
+    Import_Price_Diff_H3 = lead(log_CIF_ImportPrice, 3) - lag(log_CIF_ImportPrice),
+    Import_Price_Diff_H4 = lead(log_CIF_ImportPrice, 4) - lag(log_CIF_ImportPrice)
+  )
 
-stargazer(Model_1)
 
+Model_1.1 <- lm(Import_Price_Diff_H1 ~ log_Exchange_Diff + lag(log_Exchange_Diff)
+                , data = log_diff)
+
+Model_1.2 <- lm(Import_Price_Diff_H2 ~ log_Exchange_Diff + lag(log_Exchange_Diff)
+                , data = log_diff)
+
+Model_1.3 <- lm(Import_Price_Diff_H3 ~ log_Exchange_Diff + lag(log_Exchange_Diff)
+               , data = log_diff)
+
+Model_1.4 <- lm(Import_Price_Diff_H4 ~ log_Exchange_Diff + lag(log_Exchange_Diff)
+                , data = log_diff)
+
+Model_1.5 <- lm(Import_Price_Diff_H1 ~ log_Exchange_Diff + lag(log_Exchange_Diff)
+                + lag(log_Exchange_Diff,2), data = log_diff)
+
+Model_1.6 <- lm(Import_Price_Diff_H2 ~ log_Exchange_Diff + lag(log_Exchange_Diff)
+                + lag(log_Exchange_Diff,2), data = log_diff)
+
+Model_1.7 <- lm(Import_Price_Diff_H3 ~ log_Exchange_Diff + lag(log_Exchange_Diff)
+                + lag(log_Exchange_Diff,2), data = log_diff)
+
+Model_1.8 <- lm(Import_Price_Diff_H4 ~ log_Exchange_Diff + lag(log_Exchange_Diff)
+                + lag(log_Exchange_Diff,2), data = log_diff)
+
+
+
+First_Stage_ERPT <- list(
+  "Horizon 1" = Model_1.1,
+  "Horizon 2" = Model_1.2,
+  "Horizon 3" = Model_1.3,
+  "Horizon 4" = Model_1.4
+
+)
+
+modelsummary(First_Stage_ERPT)
 
 
 
 #-------------Second-stage ERPT, including various horizons---------------------
 
-log_diff <- log_diff %>% 
-  mutate(Total_CPI_ATE_DIFF_H2 = lead(log_Total_CPI_ATE,2) - log_Total_CPI_ATE,
-         Total_CPI_ATE_DIFF_H4 = lead(log_Total_CPI_ATE,4) - log_Total_CPI_ATE,
-         Total_CPI_ATE_DIFF_H8 = lead(log_Total_CPI_ATE,8) - log_Total_CPI_ATE)
+log_diff <- data_log %>% 
+  mutate( Total_CPI_ATE_DIFF_H1 = lead(log_Total_CPI_ATE) - log_Total_CPI_ATE,
+          Total_CPI_ATE_DIFF_H2 = lead(log_Total_CPI_ATE,2) - log_Total_CPI_ATE,
+          Total_CPI_ATE_DIFF_H3 = lead(log_Total_CPI_ATE,3) - log_Total_CPI_ATE,
+          Total_CPI_ATE_DIFF_H4 = lead(log_Total_CPI_ATE,4) - log_Total_CPI_ATE,
+          Total_CPI_ATE_DIFF_H5 = lead(log_Total_CPI_ATE,5) - log_Total_CPI_ATE,
+          Total_CPI_ATE_DIFF_H6 = lead(log_Total_CPI_ATE,6) - log_Total_CPI_ATE,
+          Total_CPI_ATE_DIFF_H7 = lead(log_Total_CPI_ATE,7) - log_Total_CPI_ATE,
+          Total_CPI_ATE_DIFF_H8 = lead(log_Total_CPI_ATE,8) - log_Total_CPI_ATE,
+         log_CIF_ImportPrice_Diff = log_CIF_ImportPrice - lag(log_CIF_ImportPrice))
 
 
 
 
-Model_2.1 <- lm(log_Total_CPI_ATE_Diff_H1 ~ log_CIF_ImportPrice_Diff_H1 , data = log_diff)
-Model_2.2 <- lm(Total_CPI_ATE_DIFF_H2 ~ log_CIF_ImportPrice_Diff_H1 , data = log_diff)
-Model_2.3 <- lm(Total_CPI_ATE_DIFF_H4 ~ log_CIF_ImportPrice_Diff_H1 , data = log_diff)
-Model_2.4 <- lm(Total_CPI_ATE_DIFF_H8 ~ log_CIF_ImportPrice_Diff_H1 , data = log_diff)
+Model_2.1 <- lm(Total_CPI_ATE_DIFF_H1 ~ log_CIF_ImportPrice_Diff + lag(log_CIF_ImportPrice_Diff)
+                , data = log_diff)
+
+Model_2.2 <- lm(Total_CPI_ATE_DIFF_H2 ~ log_CIF_ImportPrice_Diff + lag(log_CIF_ImportPrice_Diff)
+                 , data = log_diff)
+
+Model_2.3 <- lm(Total_CPI_ATE_DIFF_H3 ~ log_CIF_ImportPrice_Diff + lag(log_CIF_ImportPrice_Diff)
+                 , data = log_diff)
+
+Model_2.4 <- lm(Total_CPI_ATE_DIFF_H4 ~ log_CIF_ImportPrice_Diff + lag(log_CIF_ImportPrice_Diff)
+                , data = log_diff)
+
+Model_2.5 <- lm(Total_CPI_ATE_DIFF_H5 ~ log_CIF_ImportPrice_Diff + lag(log_CIF_ImportPrice_Diff)
+                 , data = log_diff)
+
+Model_2.6 <- lm(Total_CPI_ATE_DIFF_H6 ~ log_CIF_ImportPrice_Diff + lag(log_CIF_ImportPrice_Diff)
+                , data = log_diff)
+
+Model_2.7 <- lm(Total_CPI_ATE_DIFF_H7 ~ log_CIF_ImportPrice_Diff + lag(log_CIF_ImportPrice_Diff)
+                , data = log_diff)
+
+Model_2.8 <- lm(Total_CPI_ATE_DIFF_H8 ~ log_CIF_ImportPrice_Diff + lag(log_CIF_ImportPrice_Diff)
+                 , data = log_diff)
+
+Model_2.9 <- lm(Total_CPI_ATE_DIFF_H1 ~ log_CIF_ImportPrice_Diff + lag(log_CIF_ImportPrice_Diff)
+                + lag(log_CIF_ImportPrice_Diff,2), data = log_diff)
+
+Model_2.10 <- lm(Total_CPI_ATE_DIFF_H2 ~ log_CIF_ImportPrice_Diff + lag(log_CIF_ImportPrice_Diff)
+                + lag(log_CIF_ImportPrice_Diff,2) , data = log_diff)
+
+Model_2.11 <- lm(Total_CPI_ATE_DIFF_H3 ~ log_CIF_ImportPrice_Diff + lag(log_CIF_ImportPrice_Diff)
+                + lag(log_CIF_ImportPrice_Diff,2) , data = log_diff)
+
+Model_2.12 <- lm(Total_CPI_ATE_DIFF_H4 ~ log_CIF_ImportPrice_Diff + lag(log_CIF_ImportPrice_Diff)
+                + lag(log_CIF_ImportPrice_Diff,2) , data = log_diff)
+
+Model_2.13 <- lm(Total_CPI_ATE_DIFF_H5 ~ log_CIF_ImportPrice_Diff + lag(log_CIF_ImportPrice_Diff)
+                + lag(log_CIF_ImportPrice_Diff,2) , data = log_diff)
+
+Model_2.14 <- lm(Total_CPI_ATE_DIFF_H6 ~ log_CIF_ImportPrice_Diff + lag(log_CIF_ImportPrice_Diff)
+                + lag(log_CIF_ImportPrice_Diff,2), data = log_diff)
+
+Model_2.15 <- lm(Total_CPI_ATE_DIFF_H7 ~ log_CIF_ImportPrice_Diff + lag(log_CIF_ImportPrice_Diff)
+                + lag(log_CIF_ImportPrice_Diff,2) , data = log_diff)
+
+Model_2.16 <- lm(Total_CPI_ATE_DIFF_H8 ~ log_CIF_ImportPrice_Diff + lag(log_CIF_ImportPrice_Diff)
+                + lag(log_CIF_ImportPrice_Diff,2) , data = log_diff)
+
+
+
 
 Second_Stage_ERPT <- list(
   "Horizon 1" = Model_2.1,
   "Horizon 2" = Model_2.2,
   "Horizon 3" = Model_2.3,
-  "Horizon 4" = Model_2.4
+  "Horizon 4" = Model_2.4,
+  "Horizon 5" = Model_2.5,
+  "Horizon 6" = Model_2.6,
+  "Horizon 7" = Model_2.7,
+  "Horizon 8" = Model_2.8
 )
 
 modelsummary(Second_Stage_ERPT)
+
+
+
+
+
+
+       
