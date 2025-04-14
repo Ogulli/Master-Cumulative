@@ -1,0 +1,152 @@
+library(modelsummary)
+library(tidyverse)
+library(lmtest)
+library(sandwich)
+
+data_log <- Final_Timeseries_for_all_variables_in_log %>% 
+  select(-log_CIF_ImportPrice, - log_Total_CPI_ATE)
+
+  
+# Create log difference of exchange rate
+log_diff <- data_log %>%
+  mutate(Log_Diff_Exchange = log_Exchange_rate - lag(log_Exchange_rate))
+
+# Define horizons
+horizons <- c(1:8)
+
+sector_cols <- c(
+  "log_Food_Non_Alcholic_Beverages",
+  "log_Alcoholic_Beverages_Tobacco",
+  "log_Clothing_Footwear",
+  "log_Furnishings_household_equipment",
+  "log_Transport",
+  "log_Health"
+)
+
+# Loop through horizons and sector columns to create t+h - t-1 differences
+for (h in horizons) {
+  for (sector in sector_cols) {
+    new_col <- paste0(sector, "_Diff_H", h)
+    
+    log_diff <- log_diff %>%
+      mutate(!!new_col := lead(.data[[sector]], h) - .data[[sector]])
+  }
+}
+
+
+log_diff <- log_diff %>% 
+  select(-log_Exchange_rate, -log_Food_Non_Alcholic_Beverages, 
+         -log_Alcoholic_Beverages_Tobacco, -log_Clothing_Footwear,
+         -log_Furnishings_household_equipment, -log_Transport,
+         -log_Health)
+
+#--------------------------------------------------------------------------
+
+# Function to run the regression for a given horizon
+run_regression <- function(horizon, data) {
+  # Construct the dependent variable name, e.g. "log_Food_Non_Alcholic_Beverages_Diff_H1"
+  dep_var <- paste0("log_Health_Diff_H", horizon) # Change the Variable to run a regressions for other variables.
+  
+  # Build the regression formula as a string
+  formula_str <- paste(dep_var, "~ Log_Diff_Exchange + lag(Log_Diff_Exchange) + lag(Log_Diff_Exchange,2)")
+  
+  # Convert the string to a formula and run the linear model
+  lm(as.formula(formula_str), data = data)
+}
+
+# Loop over horizons 1:8 and store the models in a list
+model_list <- lapply(1:8, function(h) run_regression(h, data = log_diff))
+
+# Name each list element to mimic your original naming
+names(model_list) <- as.character(1:8)
+
+# Now, model_list is a list with models "1" through "8"
+model_list
+
+
+#-------------------------------------------------------------------------------
+# Create a data frame of the robust coefficient for Log_Diff_Exchange
+# along with its 95% confidence interval using coefci() with Newey-West (lag = 3)
+localproj_df <- map_dfr(model_list, function(mod) {
+  # Extract the robust confidence intervals with Newey-West SE (lag = 3, no prewhitening) # Change the lag for the residuals.
+  robust_ci <- coefci(mod, vcov. = NeweyWest(mod, lag = 3, prewhite = FALSE))
+  # Get the main coefficient and its CIs for Log_Diff_Exchange
+  data.frame(
+    estimate  = coef(mod)["Log_Diff_Exchange"],
+    conf.low  = robust_ci["Log_Diff_Exchange", 1],
+    conf.high = robust_ci["Log_Diff_Exchange", 2]
+  )
+}, .id = "horizon") %>%
+  mutate(horizon = as.numeric(horizon))
+
+# Now plot using your preferred style:
+ggplot(localproj_df, aes(x = horizon, y = estimate)) +
+  # 1) Dashed zero baseline
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  # 2) Shaded area for confidence interval
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), 
+              fill = "gray50", alpha = 0.3) +
+  # 3) Solid black line for the IRF
+  geom_line(color = "black", linewidth = 1) +
+  # Optional: Add points if you want them
+  # geom_point(color = "black", size = 2) +
+  # 4) Title and labels
+  labs(
+    title = "Food and Beverages",
+    x = "Horizon",
+    y = "Response"
+  ) +
+  # 5) Minimal theme
+  theme_minimal(base_size = 12) +
+  # 6) Center the plot title (optional)
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold")
+  )
+
+
+Food_Beverages_lp <- localproj_df
+Alcohol_Tobacco_lp <- localproj_df
+Clothing_Footwear_lp <- localproj_df
+Furnsihing_Household_equiment_lp <- localproj_df 
+Transport_lp <- localproj_df
+Health_lp <- localproj_df
+
+
+# Load required libraries
+library(dplyr)
+library(ggplot2)
+library(purrr)
+
+# Create a named list of your data frames.
+# Make sure the names correspond to the sector labels you want to display.
+lp_list <- list(
+  "Food and Beverages"         = Food_Beverages_lp,
+  "Alcohol & Tobacco"          = Alcohol_Tobacco,
+  "Clothing & Footwear"        = Clothing_Footwear_lp,
+  "Furnishing & Household Equipment" = Furnsihing_Household_equiment_lp,
+  "Transport"                  = Transport_lp,
+  "Health"                     = Health_lp
+)
+
+# Combine the individual data frames into one, adding a 'sector' column from the list names.
+combined_lp <- bind_rows(lp_list, .id = "sector")
+ggplot(combined_lp, aes(x = horizon, y = estimate)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), fill = "gray50", alpha = 0.3) +
+  geom_line(color = "black", linewidth = 1) +
+  facet_wrap(~ sector, scales = "free_y") +
+  labs(
+    title = "Impulse Response Functions by Sector",
+    x = "Horizon",
+    y = "Response"
+  ) +
+  theme_classic(base_size = 12) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    strip.background = element_blank(),         # Remove box around facet titles
+    strip.text = element_text(face = "bold"),   # Optional: keep the text bold
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    axis.title = element_text(face = "bold", size = 12),
+    axis.text = element_text(size = 10)
+  )
