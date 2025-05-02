@@ -1,0 +1,237 @@
+library(tidyverse)
+
+# Read in Time series with Log-Quarterly data
+
+data <- Final_Timeseries_for_all_variables_in_log
+
+
+Data_1 <- data %>%
+  mutate(Total_CPI_ATE = exp(log_Total_CPI_ATE),
+         CIF_ImportPrice = exp(log_CIF_ImportPrice))
+
+
+
+
+# Actual percent change
+Data_1 <- Data_1 %>%
+  mutate(
+    CIF_percent_change = ((CIF_ImportPrice - lag(CIF_ImportPrice, 4)) / lag(CIF_ImportPrice, 4)) * 100,
+    CPI_percent_change = ((Total_CPI_ATE - lag(Total_CPI_ATE, 4)) / lag(Total_CPI_ATE, 4)) * 100
+  )
+
+  )
+
+
+Data_1 <- Data_1 %>%
+  select(Date, CPI_percent_change, CIF_percent_change)
+
+# Remove rows with NA in CPI_percent_change
+Data_1 <- Data_1 %>% 
+  filter(!is.na(CIF_percent_change))
+
+
+
+
+
+library(ggplot2)
+library(dplyr)
+
+y_min <- -10
+y_max <- 25
+
+plot <- ggplot(Data_1, aes(x = Date)) +
+  # zero line
+  geom_hline(yintercept = 0,
+             color = "grey60",
+             linetype = "dashed",
+             size = 0.6) +
+  
+  # 1) CIF Import Price (volatile)
+  geom_line(
+    aes(y      = CIF_percent_change,
+        colour = "CIF Import Price"),
+    size = 1.2
+  ) +
+  
+  # 2) CPI-ATE (smoother)
+  geom_line(
+    aes(y      = CPI_percent_change,
+        colour = "CPI-ATE"),
+    size = 1.2
+  ) +
+  
+  # bullet-proof manual scale
+  scale_colour_manual(
+    name   = NULL,
+    breaks = c("CIF Import Price", "CPI-ATE"),
+    values = c(
+      "CIF Import Price" = "#E67E22",
+      "CPI-ATE"          = "#1F618D"
+    )
+  ) +
+  
+  # Y axis
+  scale_y_continuous(
+    name   = "Year-over-Year % Change",
+    limits = c(y_min, y_max),
+    breaks = seq(y_min, y_max, by = 5)
+  ) +
+  
+  # X axis
+  scale_x_date(
+    limits = as.Date(c("2004-01-01", "2024-12-31")),
+    breaks = seq(
+      from = as.Date("2004-01-01"),
+      to   = as.Date("2024-12-31"),
+      by   = "2 years"
+    ),
+    date_labels = "%Y",
+    expand = c(0,0)
+  ) +
+  
+  labs(x = "Date") +
+  theme_classic() +
+  theme(
+    legend.position = "top",
+    legend.text     = element_text(size = 11),
+    text            = element_text(size = 13),
+    axis.line       = element_line(size = 1),
+    axis.ticks      = element_line(size = 1)
+  )
+
+plot
+# Save as a 6×4 inch, 300 dpi PNG
+ggsave(
+  filename = "CPI_CIF_plot.png",  # output file
+  plot     = plot,                # your ggplot object
+  width    = 6,                   # width in inches
+  height   = 4,                   # height in inches
+  units    = "in",                
+  dpi      = 300                  # dots per inch
+)
+
+
+
+
+
+
+
+
+Data_3 <- Final_Timeseries_for_all_variables_in_log
+
+
+library(dplyr)
+
+Data_3 <- Data_3 %>%
+  mutate(Exchange_rate = exp(log_Exchange_rate),
+         Total_CPI_ATE = exp(log_Total_CPI_ATE))
+
+Data_3 <- Data_3 %>%
+  select(Date, Exchange_rate, CPI_percent_change)
+
+
+# Actual percent change
+Data_3 <- Data_3 %>%
+  mutate(
+    CPI_percent_change = ((Total_CPI_ATE - lag(Total_CPI_ATE, 4)) / lag(Total_CPI_ATE, 4)) * 100
+  )
+
+# Remove rows with NA in CPI_percent_change
+Data_3 <- Data_3 %>% 
+  filter(!is.na(CPI_percent_change))
+
+
+
+
+
+
+
+
+
+library(ggplot2)
+
+# compute mins/maxes just once
+range_cpi <- range(Data_3$CPI_percent_change, na.rm = TRUE)
+range_ex  <- range(Data_3$Exchange_rate,      na.rm = TRUE)
+
+cpi_min <- range_cpi[1]
+cpi_max <- range_cpi[2]
+ex_min  <- range_ex[1]
+ex_max  <- range_ex[2]
+
+# rescale ER-index to overlay
+Data_3 <- Data_3 %>%
+  mutate(
+    Exchange_rate_rescaled = (Exchange_rate - ex_min)/(ex_max - ex_min) * (cpi_max - cpi_min) + cpi_min
+  )
+
+cpi_plot_1 <- ggplot(Data_3, aes(x = Date)) +
+  geom_line(aes(y = CPI_percent_change,         color = "CPI-ATE"),             size = 1.2) +
+  geom_line(aes(y = Exchange_rate_rescaled,     color = "Exchange Rate Index"), size = 1.2) +
+  
+  scale_color_manual(
+    values = c(
+      "CPI-ATE"             = "#E67E22",
+      "Exchange Rate Index" = "#1F618D"
+    )
+  ) +
+  
+  scale_y_continuous(
+    name    = "CPI-ATE (% YoY)",
+    sec.axis = sec_axis(
+      trans = ~ (. - cpi_min)/(cpi_max - cpi_min)*(ex_max - ex_min) + ex_min,
+      name  = "Exchange Rate Index"
+    )
+  ) +
+  
+  # ←——— HERE is the new X‐axis spec
+  scale_x_date(
+    limits = as.Date(c("2004-01-01", "2024-12-31")),
+    breaks = seq(
+      from = as.Date("2004-01-01"),
+      to   = as.Date("2024-01-01"),
+      by   = "2 years"
+    ),
+    date_labels = "%Y",
+    expand = c(0,0)
+  ) +
+  labs(x = "Date", color = "Variable") +
+  theme_classic() +
+  theme(
+    axis.line      = element_line(size = 1),
+    axis.ticks     = element_line(size = 1),
+    legend.position= "bottom",
+    text           = element_text(size = 14)
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 2)))
+
+cpi_plot_1
+
+# Print plot
+cpi_plot_1
+
+ggsave(
+  filename = "cpi_plot_1.png",
+  plot = cpi_plot_1,
+  width = 6.5,         # inches – fits well in Word margins
+  height = 4.5,        # adjust for visual balance
+  dpi = 600,           # high resolution for print
+  units = "in",        # inches = best for Word layout
+  device = "png"
+)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
