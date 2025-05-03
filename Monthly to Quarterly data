@@ -1,0 +1,74 @@
+# this script uses three monthly CPI indexes aggregated to quarterly with format YYYY MM DD
+ibrary(dplyr)
+library(lubridate)
+library(stringr)
+
+Education_1 <- Education %>%
+  mutate(
+    # Step 1: Convert "2003M01" to proper Date → "2003-01-01"
+    Date = ymd(paste0(str_replace(month, "M", "-"), "-01")),
+    # Step 2: Snap to quarter start
+    Date = floor_date(Date, "quarter")
+  ) %>%
+  # Step 3: Group by quarter and average all numeric columns
+  group_by(Date) %>%
+  summarise(
+    across(where(is.numeric), ~ mean(.x, na.rm = TRUE)),
+    .groups = "drop"
+  ) %>%
+  # Step 4: Rename your target column
+  rename(Education = `CPI-AT and CPI-ATE. CPI-AE and CPI-AEL (2015=100). Monthly`)
+
+#---------------------------------------------------------------
+
+
+Housing_Water_Electricity_gas_and_other_fuels_1 <- Housing_Water_Electricity_gas_and_other_fuels %>%
+  mutate(
+    # Step 1: Convert "2003M01" to proper Date → "2003-01-01"
+    Date = ymd(paste0(str_replace(month, "M", "-"), "-01")),
+    # Step 2: Snap to quarter start
+    Date = floor_date(Date, "quarter")
+  ) %>%
+  # Step 3: Group by quarter and average all numeric columns
+  group_by(Date) %>%
+  summarise(
+    across(where(is.numeric), ~ mean(.x, na.rm = TRUE)),
+    .groups = "drop"
+  ) %>%
+  # Step 4: Rename your target column
+  rename( Housing_Water_Electricity = `CPI-AT and CPI-ATE. CPI-AE and CPI-AEL (2015=100). Monthly`)
+
+
+#--------------------------------------------------------------------------
+
+Resutuarant_and_hotel_1 <- Resutuarant_and_hotel %>%
+  mutate(
+    # Step 1: Convert "2003M01" to proper Date → "2003-01-01"
+    Date = ymd(paste0(str_replace(month, "M", "-"), "-01")),
+    # Step 2: Snap to quarter start
+    Date = floor_date(Date, "quarter")
+  ) %>%
+  # Step 3: Group by quarter and average all numeric columns
+  group_by(Date) %>%
+  summarise(
+    across(where(is.numeric), ~ mean(.x, na.rm = TRUE)),
+    .groups = "drop"
+  ) %>%
+  # Step 4: Rename your target column
+  rename(Resutuarant_Hotel = `CPI-AT and CPI-ATE. CPI-AE and CPI-AEL (2015=100). Monthly`)
+
+
+library(dplyr)
+library(purrr)
+
+# put your three data frames in a list
+df_list <- list(Education_1, Resutuarant_and_hotel_1, Housing_Water_Electricity_gas_and_other_fuels_1)
+
+# merge them one by one on the Date column
+Three_Vars <- reduce(df_list, full_join, by = "Date")
+
+# --------------Log transform the data------------------------
+Three_Vars <- Three_Vars %>% 
+  mutate(log_Education = log(Education), log_Resturant_Hotel = log(Resutuarant_Hotel),
+         log_Housing_Water_Fuels = log(Housing_Water_Electricity)) %>% 
+  select(-Education, -Resutuarant_Hotel, -Housing_Water_Electricity)
