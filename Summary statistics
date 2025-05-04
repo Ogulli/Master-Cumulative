@@ -1,0 +1,52 @@
+# install.packages(c("tidyverse","kableExtra"))  # if needed
+library(tidyverse)
+library(kableExtra)
+library(stargazer)
+
+# 1. Define the vector of all log-columns (excluding Date)
+vars <- c(
+  "log_Exchange_rate",
+  "log_Food_Non_Alcholic_Beverages",
+  "log_Alcoholic_Beverages_Tobacco",
+  "log_Clothing_Footwear",
+  "log_Furnishings_household_equipment",
+  "log_Transport",
+  "log_Health",
+  "log_CIF_ImportPrice",
+  "log_Total_CPI_ATE",
+  "log_Education",
+  "log_Resturant_Hotel",
+  "log_Housing_Water_Fuels"
+)
+
+# 2. Pivot to long form & compute stats
+stats_table <- Final_Timeseries_for_all_variables_in_log_new %>%
+  select(all_of(vars)) %>%
+  pivot_longer(
+    cols      = everything(),
+    names_to  = "Series",
+    values_to = "LogValue"
+  ) %>%
+  group_by(Series) %>%
+  summarise(
+    Mean   = mean(LogValue, na.rm = TRUE),
+    Median = median(LogValue, na.rm = TRUE),
+    SD     = sd(LogValue, na.rm = TRUE),
+    Min    = min(LogValue, na.rm = TRUE),
+    Max    = max(LogValue, na.rm = TRUE),
+    N      = sum(!is.na(LogValue))
+  ) %>%
+  ungroup()
+
+# 3. Render the table (HTML or LaTeX)
+stats_table %>%
+  # keep the original order
+  arrange(match(Series, vars)) %>%
+  # round numeric columns
+  mutate(across(Mean:Max, ~ round(.x, 3))) %>%
+  kable(
+    caption   = "Table X: Descriptive Statistics of Log-Transformed CPI Values by Series",
+    col.names = c("Series", "Mean", "Median", "SD", "Min", "Max", "N"),
+    booktabs  = TRUE
+  ) %>%
+  kable_styling(full_width = FALSE)
