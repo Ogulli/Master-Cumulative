@@ -1,0 +1,169 @@
+library(dplyr)
+
+data_log <- Final_Timeseries_for_all_variables_in_log_new
+
+#------------------------------- Data Transformation------------------------
+# Define the horizons and CPI sector columns
+horizons <- 1:8
+
+sector_cols <- c(
+  "log_Food_Non_Alcholic_Beverages",
+  "log_Alcoholic_Beverages_Tobacco",
+  "log_Clothing_Footwear",
+  "log_Furnishings_household_equipment",
+  "log_Transport",
+  "log_Health",
+  "log_Education",
+  "log_Resturant_Hotel",
+  "log_Housing_Water_Fuels"
+)
+
+# Step 1: Compute FX and Import Price changes (from t−1 to t)
+log_diff <- data_log %>%
+  arrange(Date) %>%
+  mutate(
+    Log_Diff_Exchange = log_Exchange_rate - lag(log_Exchange_rate),
+    log_Diff_ImportPrice = log_CIF_ImportPrice - lag(log_CIF_ImportPrice)
+  )
+
+# Step 2: Compute cumulative CPI response from t−1 to t+h
+for (h in horizons) {
+  for (sector in sector_cols) {
+    new_col <- paste0(sector, "_Diff_H", h)
+    log_diff <- log_diff %>%
+      mutate(
+        !!new_col := lead(!!sym(sector), h) - lag(!!sym(sector))
+      )
+  }
+}
+
+# Step 3: Drop original log CPI levels (clean output)
+log_diff <- log_diff %>%
+  select(
+    -log_Exchange_rate, -log_CIF_ImportPrice, -log_Total_CPI_ATE,
+    -all_of(sector_cols)
+  )
+
+
+
+#------------------------------Create Panel data with dummy--------------------------------
+
+
+# Step 0: Define tradable sectors
+tradable_sectors <- c(
+  "log_Food_Non_Alcholic_Beverages",
+  "log_Clothing_Footwear",
+  "log_Furnishings_household_equipment",
+  "log_Transport"
+)
+
+# Step 1: Identify CPI diff columns
+cpi_diff_cols <- names(log_diff)[!(names(log_diff) %in% c("Date", "Log_Diff_Exchange","log_Diff_ImportPrice"))]
+
+# Step 2: Pivot to long format and extract Horizon/Sector
+long_data <- log_diff %>%
+  pivot_longer(
+    cols = all_of(cpi_diff_cols),
+    names_to = "Variable",
+    values_to = "Cumulative_CPI_Diff"
+  ) %>%
+  mutate(
+    Horizon = str_extract(Variable, "_H\\d+") %>%
+      str_remove_all("_H") %>%
+      as.integer(),
+    Sector = str_remove(Variable, "_Diff_H\\d+"),
+    Tradable = if_else(Sector %in% tradable_sectors, 1, 0)
+  ) %>%
+  select(Date, Sector, Horizon, Log_Diff_Exchange, log_Diff_ImportPrice, Cumulative_CPI_Diff, Tradable) %>%
+  arrange(Sector, Date, Horizon)
+
+# Step 3: Clean the data (only filter NA values)
+long_data_clean <- long_data %>%
+  filter(
+    !is.na(Cumulative_CPI_Diff),
+    !is.na(Log_Diff_Exchange)
+  )
+
+
+#-------------------Panel data plot Tradable and Non-tradable-------------------
+
+# Step 1: Define the horizons and prepare output container
+horizons <- 1:8
+all_results <- list()
+
+# Step 2: Loop over each horizon
+for (h in horizons) {
+  
+  # Filter data for this horizon
+  df_h <- long_data_clean %>%
+    filter(Horizon == h) %>%
+    arrange(Sector, Date)
+  
+  # Run fixed-effects panel regression with Tradable interaction
+  model_h <- feols(
+    Cumulative_CPI_Diff ~ Log_Diff_Exchange * Tradable + 
+      l(Log_Diff_Exchange, 1:2) | 
+      Sector,
+    data = df_h,
+    panel.id = ~ Sector + Date,
+    cluster = "Date"
+  )
+  
+  # Extract relevant FX + interaction terms
+  tidy_h <- broom::tidy(model_h, cluster = "Date") %>%
+    filter(term %in% c("Log_Diff_Exchange", "Log_Diff_Exchange:Tradable")) %>%
+    mutate(
+      Horizon = h,
+      Group = case_when(
+        term == "Log_Diff_Exchange" ~ "Non-Tradable",
+        term == "Log_Diff_Exchange:Tradable" ~ "Tradable"
+      )
+    ) %>%
+    mutate(
+      estimate = if_else(Group == "Tradable", estimate + model_h$coefficients["Log_Diff_Exchange"], estimate),
+      std.error = std.error  # (optional: use Delta method if needed)
+    ) %>%
+    select(Horizon, Group, estimate, std.error, p.value)
+  
+  all_results[[h]] <- tidy_h
+}
+
+group_lp_results <- bind_rows(all_results) %>%
+  mutate(
+    Group = factor(Group, levels = c("Non-Tradable", "Tradable"))
+  )
+
+#--------------------------Facet Plot-----------------------------------
+
+ggplot(group_lp_results, aes(x = Horizon, y = estimate)) +
+  geom_ribbon(aes(ymin = estimate - 1.96 * std.error,
+                  ymax = estimate + 1.96 * std.error),
+              fill = "grey70", alpha = 0.6) +
+  geom_line(size = 1.2, color = "black") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  facet_wrap(~ Group, nrow = 1) +
+  labs(
+    x = "Horizon",
+    y = "Response"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    # Remove gridlines
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    
+    # Make axis lines visible
+    panel.border = element_blank(),
+    axis.line = element_line(color = "black", size = 0.6),
+    
+    # Facet label style
+    strip.text = element_text(size = 13, face = "bold"),
+    
+    # Axis labels and text
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 11),
+    
+    # Remove legend
+    legend.position = "none"
+  )
+ggsave("ERPT_Tradable_vs_NonTradable_Facet.png", plot = last_plot(), width = 7, height = 3.5, dpi = 600)
