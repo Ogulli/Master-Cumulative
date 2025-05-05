@@ -11,6 +11,7 @@ First_Stage_df <- map_dfr(
     # 3) Extract estimate & robust SE for your key regressor
     est     <- ct["log_Exchange_Diff", "Estimate"]
     se      <- ct["log_Exchange_Diff", "Std. Error"]
+     p   <- ct["log_CIF_ImportPrice_Diff", "Pr(>|t|)"]
     # 4) Build 95% CI
     z       <- qnorm(0.975)
     low     <- est - z * se
@@ -21,6 +22,7 @@ First_Stage_df <- map_dfr(
       estimate  = est,
       conf.low  = low,
       conf.high = high
+       p.value   = p
     )
   },
   .id = "horizon"
