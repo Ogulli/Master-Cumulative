@@ -3,21 +3,34 @@ library(modelsummary)
 
 
 
-data_log <- Final_Timeseries_for_all_variables_in_log
+data_log <- Final_Timeseries_for_all_variables_in_log_new
 
 # Define the horizons you want
-horizons <- c(1, 2, 4, 6, 8)
+horizons <- c(1,2, 3, 4, 5, 6, 7, 8)
+
+
+sector_cols <- c(
+  "log_Food_Non_Alcholic_Beverages",
+  "log_Alcoholic_Beverages_Tobacco",
+  "log_Clothing_Footwear",
+  "log_Furnishings_household_equipment",
+  "log_Transport",
+  "log_Health",
+  "log_Education",
+  "log_Resturant_Hotel",
+  "log_Housing_Water_Fuels"
+)
 
 #-------------------------------------------------------------------------------
 log_diff <- data_log %>%
-  mutate(Log_Diff_Exchange = lead(log_Exchange_rate, 1) - log_Exchange_rate)
+  mutate(Log_Diff_Exchange = log_Exchange_rate - lag(log_Exchange_rate))
 
 
 for (h in horizons) {
   for (sector in sector_cols) {
     new_col <- paste0(sector, "_Diff_H", h)
     log_diff <- log_diff %>%
-      mutate(!!new_col := lead(!!sym(sector), h) - !!sym(sector))
+      mutate(!!new_col := lead(!!sym(sector), h) - lag(!!sym(sector)))
   }
 }
 
@@ -26,11 +39,7 @@ log_diff <- log_diff %>%
          -log_Alcoholic_Beverages_Tobacco, -log_Clothing_Footwear,
          -log_Furnishings_household_equipment, -log_Transport,
          -log_Health,-log_CIF_ImportPrice, -log_Total_CPI_ATE ,
-         -log_Total_CPI_ATE_Diff_H1, -log_CIF_ImportPrice_Diff_H1,
-         -log_Total_CPI_ATE_Diff_H2, -log_CIF_ImportPrice_Diff_H2,
-         -log_Total_CPI_ATE_Diff_H4, -log_CIF_ImportPrice_Diff_H4,
-         -log_Total_CPI_ATE_Diff_H6, -log_CIF_ImportPrice_Diff_H6,
-         -log_Total_CPI_ATE_Diff_H8, -log_CIF_ImportPrice_Diff_H8)
+         -log_Education, -log_Resturant_Hotel, -log_Housing_Water_Fuels)
 
 #-------------------------------------------------------------------------------
 
@@ -79,3 +88,143 @@ summary(models_by_horizon[["H4"]])
 
 modelsummary(models_by_horizon, stars = TRUE)
 
+
+
+
+
+
+
+
+
+
+
+#------------------------- Pivot and estimate a single horizon----------------------------------------
+library(tidyverse)
+
+# Get all column names except "Date" and "Log_Diff_Exchange"
+cpi_diff_cols <- names(log_diff)[!(names(log_diff) %in% c("Date", "Log_Diff_Exchange"))]
+
+# Pivot to long format
+long_data <- log_diff %>%
+  pivot_longer(
+    cols = all_of(cpi_diff_cols),
+    names_to = "Variable",
+    values_to = "Cumulative_CPI_Diff"
+  ) %>%
+  # Extract Horizon and Sector from variable names
+  mutate(
+    Horizon = str_extract(Variable, "_H\\d+") %>%
+      str_remove_all("_H") %>%
+      as.integer(),
+    Sector = str_remove(Variable, "_Diff_H\\d+")
+  ) %>%
+  select(Date, Sector, Horizon, Log_Diff_Exchange, Cumulative_CPI_Diff) %>%
+  arrange(Sector, Date, Horizon)
+
+
+library(fixest)
+library(dplyr)
+
+# Step 1: Clean the data
+long_data_clean <- long_data %>%
+  filter(
+    !is.na(Cumulative_CPI_Diff),
+    !is.na(Log_Diff_Exchange),
+    !is.na(lag(Log_Diff_Exchange, 1)),
+    !is.na(lag(Log_Diff_Exchange, 2))
+  )
+
+library(dplyr)
+
+# Filter just horizon 1 (or any single h you want)
+h <- 2
+panel_data_h1 <- long_data_clean %>%
+  filter(Horizon == h) %>%
+  arrange(Sector, Date)
+
+library(fixest)
+
+panel_model_h1 <- feols(
+  Cumulative_CPI_Diff ~ Log_Diff_Exchange:Sector + l(Log_Diff_Exchange,1:2) | Sector,
+  data = panel_data_h1,
+  panel.id = ~ Sector + Date,
+  cluster = "Date"
+)
+
+summary(panel_model_h1)
+
+#------------------------ loop for all 8 horizons and use LP plot-----------------------------------
+#The loop
+
+
+library(fixest)
+library(dplyr)
+library(broom)
+
+# Step 1: Define the horizons and prepare output container
+horizons <- 1:8
+all_results <- list()
+
+# Step 2: Loop over each horizon
+for (h in horizons) {
+  
+  # Filter data for this horizon
+  df_h <- long_data_clean %>%
+    filter(Horizon == h) %>%
+    arrange(Sector, Date)
+  
+  # Run fixed-effects model
+  model_h <- feols(
+    Cumulative_CPI_Diff ~ Log_Diff_Exchange:Sector + 
+      l(Log_Diff_Exchange, 1:2) | 
+      Sector,
+    data = df_h,
+    panel.id = ~ Sector + Date
+  )
+  
+  # Tidy up the output with clustered SEs
+  tidy_h <- broom::tidy(model_h, cluster = "Date") %>%
+    filter(grepl("^Log_Diff_Exchange:Sector", term)) %>%
+    mutate(
+      Sector  = gsub("Log_Diff_Exchange:Sector", "", term),
+      Horizon = h
+    ) %>%
+    select(Horizon, Sector, estimate, std.error, p.value)
+  
+  # Store in list
+  all_results[[h]] <- tidy_h
+}
+
+# Step 3: Combine all horizons into one table
+irf_panel_df <- bind_rows(all_results)
+
+# Step 4: Display
+print(irf_panel_df)
+
+irf_panel_df <- irf_panel_df %>%
+  mutate(
+    conf.low  = estimate - 1.96 * std.error,
+    conf.high = estimate + 1.96 * std.error
+  )
+
+
+
+
+library(ggplot2)
+
+ggplot(irf_panel_df, aes(x = Horizon, y = estimate)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), fill = "gray70", alpha = 0.4) +
+  geom_line(size = 1, color = "black") +
+  facet_wrap(~ Sector, scales = "free_y") +
+  labs(
+    title = "Sectoral Exchange Rate Pass-Through: Local Projection IRFs",
+    x = "Horizon (Quarters)",
+    y = "Cumulative CPI Response"
+  ) +
+  theme_classic(base_size = 13) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    strip.text = element_text(face = "bold"),
+    axis.title = element_text(face = "bold")
+  )
