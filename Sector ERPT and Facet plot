@@ -29,7 +29,7 @@ for (h in horizons) {
     new_col <- paste0(sector, "_Diff_H", h)
     
     log_diff <- log_diff %>%
-      mutate(!!new_col := lead(.data[[sector]], h) - .data[[sector]])
+      mutate(!!new_col := lead(.data[[sector]], h) - lag(.data[[sector]]))
   }
 }
 
@@ -70,11 +70,14 @@ model_list
 localproj_df <- map_dfr(model_list, function(mod) {
   # Extract the robust confidence intervals with Newey-West SE (lag = 3, no prewhitening) # Change the lag for the residuals.
   robust_ci <- coefci(mod, vcov. = NeweyWest(mod, lag = 3, prewhite = FALSE))
+  robust_p <- coeftest(mod, vcov. = NeweyWest(mod, lag = 3, prewhite = FALSE))
+
   # Get the main coefficient and its CIs for Log_Diff_Exchange
   data.frame(
     estimate  = coef(mod)["Log_Diff_Exchange"],
     conf.low  = robust_ci["Log_Diff_Exchange", 1],
     conf.high = robust_ci["Log_Diff_Exchange", 2]
+   p.value   = robust_p["Log_Diff_Exchange", "Pr(>|t|)"]
   )
 }, .id = "horizon") %>%
   mutate(horizon = as.numeric(horizon))
@@ -121,7 +124,7 @@ library(purrr)
 # Make sure the names correspond to the sector labels you want to display.
 lp_list <- list(
   "Food and Beverages"         = Food_Beverages_lp,
-  "Alcohol & Tobacco"          = Alcohol_Tobacco,
+  "Alcohol & Tobacco"          = Alcohol_Tobacco_lp,
   "Clothing & Footwear"        = Clothing_Footwear_lp,
   "Furnishing & Household Equipment" = Furnsihing_Household_equiment_lp,
   "Transport"                  = Transport_lp,
