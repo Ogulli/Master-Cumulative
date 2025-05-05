@@ -37,3 +37,45 @@ First_Stage_df <- map_dfr(
   )
 
 print(First_Stage_df)
+
+
+
+
+
+# Adjust for HAC
+# Change the dataframes according to the model_lists for the Aggregate regressions
+# And run the Dataframe in the ggplot_ 
+First_Stage_ERPT_Crisis_df <- map_dfr(
+  First_Stage_ERPT_Crisis,
+  function(mod) {
+    # 1) Compute Newey–West(3) vcov
+    nw_vcov <- NeweyWest(mod, lag = 3, prewhite = FALSE, adjust = TRUE)
+    # 2) Robust coeftest
+    ct      <- coeftest(mod, vcov. = nw_vcov)
+    # 3) Extract estimate & robust SE for your key regressor
+    est     <- ct["log_Exchange_Diff", "Estimate"]
+    se      <- ct["log_Exchange_Diff", "Std. Error"]
+    p   <- ct["log_Exchange_Diff", "Pr(>|t|)"]
+    # 4) Build 95% CI
+    z       <- qnorm(0.975)
+    low     <- est - z * se
+    high    <- est + z * se
+    
+    # 5) Return in the same shape as tidy()
+    tibble(
+      estimate  = est,
+      conf.low  = low,
+      conf.high = high,
+      p.value   = p
+    )
+  },
+  .id = "horizon"
+) %>%
+  # strip "Horizon " and convert to numeric
+  mutate(horizon = as.numeric(gsub("Horizon ", "", horizon))) %>%
+  # rename to your preferred column names
+  rename(
+    Coefficient = estimate,
+    `CI low`    = conf.low,
+    `CI high`   = conf.high
+  )
